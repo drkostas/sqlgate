@@ -7,7 +7,7 @@ After=network-online.target postgresql.service mysql.service
 [Service]
 User=sqlgate
 EnvironmentFile=/etc/sqlgate/env
-ExecStart=/usr/bin/npx --yes sqlgate --config /etc/sqlgate/sqlgate.json
+ExecStart=/usr/bin/npx --yes @drkostas/sqlgate --config /etc/sqlgate/sqlgate.json
 Restart=on-failure
 RestartSec=5
 

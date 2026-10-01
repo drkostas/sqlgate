@@ -21,8 +21,8 @@ It also serves MySQL to Python apps through a small DB-API driver (in [clients/p
 You need Node 20 or newer and a database on the same machine.
 
 ```bash
-npm install -g sqlgate
-cp "$(npm root -g)/sqlgate/examples/sqlgate.example.json" sqlgate.json
+npm install -g @drkostas/sqlgate
+cp "$(npm root -g)/@drkostas/sqlgate/examples/sqlgate.example.json" sqlgate.json
 ```
 
 Edit `sqlgate.json`. List each database and the roles an app may use. Create those roles in the database with only the rights the app needs (a role that only reads should only be able to read). The config never holds a secret itself. A secret is a reference to an environment variable, a file or a command, for example `{"command": ["security", "find-generic-password", "-s", "my-item", "-w"]}` for the macOS keychain.

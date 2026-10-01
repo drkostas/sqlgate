@@ -10,7 +10,7 @@
   <key>ProgramArguments</key>
   <array>
     <string>/opt/homebrew/bin/node</string>
-    <string>/opt/homebrew/lib/node_modules/sqlgate/src/cli.js</string>
+    <string>/opt/homebrew/lib/node_modules/@drkostas/sqlgate/src/cli.js</string>
     <string>--config</string>
     <string>/usr/local/etc/sqlgate/sqlgate.json</string>
   </array>
