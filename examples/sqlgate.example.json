@@ -1,0 +1,44 @@
+{
+  "listen": { "host": "127.0.0.1", "port": 8102 },
+  "clientIpHeader": "cf-connecting-ip",
+  "tokens": [
+    { "env": "SQLGATE_TOKEN" },
+    { "env": "SQLGATE_TOKEN_PREVIOUS", "optional": true }
+  ],
+  "tokenRefreshSeconds": 60,
+  "rateLimit": { "windowSeconds": 60, "maxRequests": 240 },
+  "maxBodyBytes": 8388608,
+  "healthDetails": false,
+
+  "postgres": {
+    "host": "127.0.0.1",
+    "port": 5432,
+    "databases": {
+      "shop": { "roles": ["shop_app", "shop_ro"] }
+    },
+    "rolePasswords": {
+      "shop_app": { "env": "SHOP_APP_PASSWORD", "optional": true }
+    }
+  },
+
+  "mysql": {
+    "host": "127.0.0.1",
+    "port": 3306,
+    "databases": {
+      "blog": { "roles": ["blog_app", "blog_ro"] }
+    },
+    "rolePasswords": {
+      "blog_app": { "command": ["security", "find-generic-password", "-s", "mysql-blog-app", "-w"] },
+      "blog_ro": { "file": "/etc/sqlgate/blog_ro.password" }
+    }
+  },
+
+  "rest": { "port": 3000 },
+
+  "jobs": {
+    "rebuild_index": {
+      "url": "http://127.0.0.1:8100/rebuild_index",
+      "basicAuth": { "user": "admin", "password": { "env": "INDEX_JOB_PASSWORD" } }
+    }
+  }
+}

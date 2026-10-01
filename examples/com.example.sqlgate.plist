@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- launchd agent for macOS. Copy to ~/Library/LaunchAgents/ and load with
+     launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.example.sqlgate.plist
+     launchd gives agents a minimal PATH, so node is named by its full path. -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.example.sqlgate</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/node</string>
+    <string>/opt/homebrew/lib/node_modules/sqlgate/src/cli.js</string>
+    <string>--config</string>
+    <string>/usr/local/etc/sqlgate/sqlgate.json</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/tmp/sqlgate.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/sqlgate.log</string>
+</dict>
+</plist>

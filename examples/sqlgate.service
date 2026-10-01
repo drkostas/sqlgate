@@ -1,0 +1,15 @@
+# systemd unit. Copy to /etc/systemd/system/sqlgate.service, then
+#   systemctl daemon-reload && systemctl enable --now sqlgate
+[Unit]
+Description=sqlgate
+After=network-online.target postgresql.service mysql.service
+
+[Service]
+User=sqlgate
+EnvironmentFile=/etc/sqlgate/env
+ExecStart=/usr/bin/npx --yes sqlgate --config /etc/sqlgate/sqlgate.json
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
