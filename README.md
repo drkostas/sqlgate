@@ -47,10 +47,10 @@ sqlgate listens on the loopback only. Publish it with a tunnel ([Cloudflare Tunn
 Use a normal connection string with the role as the user and the sqlgate token as the password.
 
 ```
-postgresql://shop_app:<token>@pg.db.example.com/shop
+postgresql://shop_app:<token>@db.example.com/shop
 ```
 
-The driver sends its requests to `https://api.db.example.com/sql`, because it replaces the first part of the host name with `api`. So the tunnel needs a hostname for `api.db.example.com` (the host in the connection string itself does not need to resolve). No other change is needed in the app. If you prefer to name the endpoint yourself, set it in code.
+The driver sends its requests to `https://api.example.com/sql`, because it replaces the first part of the host name with `api`. So the tunnel needs a hostname for `api.example.com` as well as `db.example.com` (the host in the connection string itself does not need to resolve). Keep that name one level below your domain. A free Cloudflare certificate covers `*.example.com` and not `*.db.example.com`, so a deeper name fails at the TLS handshake. No other change is needed in the app. If you prefer to name the endpoint yourself, set it in code.
 
 ```js
 import { neon, neonConfig } from "@neondatabase/serverless";
@@ -123,6 +123,14 @@ See [examples/sqlgate.example.json](examples/sqlgate.example.json) for every opt
 | `postgres`, `mysql` | none | `host`, `port`, `databases` (each with `roles`) and optional `rolePasswords` |
 | `rest` | none | `port` (and optional `host`) of a PostgREST server |
 | `jobs` | none | Named jobs, each with a loopback `url` and optional `basicAuth` |
+
+## Claude Code skill
+
+```bash
+npx @drkostas/sqlgate skill     # copies it to ~/.claude/skills/sqlgate
+```
+
+The skill gives Claude the procedure we used to move apps from a hosted database onto one at home. It covers the configuration, pointing each kind of driver at the gateway, proving the app really uses it, comparing responses byte for byte before switching a live gateway, swapping it with an automatic rollback, and backups. It ends with a table of the failures we met with how to check and fix each one.
 
 ## Limits
 

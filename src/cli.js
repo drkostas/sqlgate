@@ -4,8 +4,22 @@ import { tokenSource } from "./secrets.js";
 import { createGateway } from "./server.js";
 
 const args = process.argv.slice(2);
+if (args[0] === "skill") {
+  // Copy the Claude Code skill that comes with sqlgate into a skills folder. Needs no config.
+  const { copyFileSync, mkdirSync } = await import("node:fs");
+  const { homedir } = await import("node:os");
+  const { join, dirname } = await import("node:path");
+  const { fileURLToPath } = await import("node:url");
+  const d = args.indexOf("--dir");
+  const root = d >= 0 ? args[d + 1].replace(/^~(?=$|\/)/, homedir()) : join(homedir(), ".claude", "skills");
+  const dest = join(root, "sqlgate");
+  mkdirSync(dest, { recursive: true });
+  copyFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "skill", "SKILL.md"), join(dest, "SKILL.md"));
+  console.log(`installed ${join(dest, "SKILL.md")}`);
+  process.exit(0);
+}
 if (args.includes("--help") || args.includes("-h")) {
-  console.log("usage: sqlgate [--config path]   (default: $SQLGATE_CONFIG or ./sqlgate.json)");
+  console.log("usage: sqlgate [--config path]   (default: $SQLGATE_CONFIG or ./sqlgate.json)\n       sqlgate skill [--dir ~/.claude/skills]   install the Claude Code skill");
   process.exit(0);
 }
 const i = args.indexOf("--config");

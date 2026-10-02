@@ -1,6 +1,6 @@
 {
   "name": "@drkostas/sqlgate",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Serve a Postgres or MySQL database you host yourself to serverless apps over HTTPS, in the shape the Neon driver already speaks",
   "type": "module",
   "main": "src/index.js",
@@ -13,6 +13,7 @@
   "files": [
     "src",
     "examples",
+    "skill",
     "README.md",
     "LICENSE"
   ],
