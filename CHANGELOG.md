@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.0
+
+- A Claude Code skill for moving an app onto a self-hosted database through sqlgate, installed with `sqlgate skill`
+- The connection and tunnel examples now use a name one level below the domain, which a free Cloudflare certificate covers
+
 ## 0.1.0
 
 First release, published on npm as `@drkostas/sqlgate` (npm refuses the plain name as too close to `sqlite`).

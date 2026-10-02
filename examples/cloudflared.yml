@@ -1,10 +1,13 @@
 # A Cloudflare tunnel that publishes sqlgate and nothing else.
-# The Neon driver posts to api.<rest of the host>, so a connection string for
-# pg.db.example.com needs api.db.example.com to reach sqlgate.
+# A connection string for db.example.com makes the Neon driver post to api.example.com,
+# so both names point at sqlgate. Keep them one level below the domain, or a free
+# Cloudflare certificate (which covers *.example.com only) will not cover them.
 tunnel: <your tunnel id>
 credentials-file: /home/you/.cloudflared/<your tunnel id>.json
 
 ingress:
-  - hostname: api.db.example.com
+  - hostname: db.example.com
+    service: http://127.0.0.1:8102
+  - hostname: api.example.com
     service: http://127.0.0.1:8102
   - service: http_status:404
