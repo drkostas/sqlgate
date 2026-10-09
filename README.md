@@ -1,3 +1,5 @@
+![sqlgate](docs/images/banner.png)
+
 # sqlgate
 
 sqlgate lets an app on Vercel, Netlify or Cloudflare use a Postgres or MySQL database that runs on your own machine.
