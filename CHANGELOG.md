@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- The npm package is published from GitHub Actions with npm's trusted publishing when a `v<version>` tag is pushed, so no npm token is kept anywhere, and each release carries provenance
+
 ## 0.2.0
 
 - A Claude Code skill for moving an app onto a self-hosted database through sqlgate, installed with `sqlgate skill`
