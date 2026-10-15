@@ -34,7 +34,13 @@ try {
 }
 
 // A gateway with no usable token would start, look healthy and refuse everything, so it does not start.
-if (!tokenSource(config.tokens)().length) {
+// Every place a token can be named counts: the gateway tokens, the job tokens and each database's own.
+const allRefs = [
+  ...(config.tokens || []),
+  ...(config.jobTokens || []),
+  ...["postgres", "mysql"].flatMap((side) => Object.values(config[side]?.databases || {}).flatMap((d) => d.tokens || [])),
+];
+if (!tokenSource(allRefs)().length) {
   console.error("[sqlgate] refusing to start: no token of at least 24 characters could be read");
   process.exit(3);
 }

@@ -106,6 +106,23 @@ curl -X POST https://db.example.com/job \
 
 The caller sends a job name, never a URL, and every job URL must be on the loopback. sqlgate waits up to three seconds for the job server's first answer. A 409 from the job server comes back as "already running", an error comes back as a failure with its reason, and silence means the job is running.
 
+## One token per database
+
+A gateway token opens every database and every job. To give each app only what it needs, put the
+app's token on its database instead, and keep the gateway tokens empty or for yourself:
+
+```json
+"postgres": {
+  "databases": {
+    "shop": { "roles": ["shop_app"], "tokens": [{ "command": ["security", "find-generic-password", "-s", "sqlgate-shop", "-w"] }] },
+    "demo": { "roles": ["demo_ro"], "tokens": [{ "env": "SQLGATE_DEMO_TOKEN" }] }
+  }
+},
+"jobTokens": [{ "env": "SQLGATE_JOB_TOKEN" }]
+```
+
+A database's token opens that database only. `jobTokens` open `POST /job` only. A token for another database gets the same 401 as a wrong token, so it cannot find out which databases are served. Each list rotates the same way as the gateway tokens below.
+
 ## Rotate the token
 
 Put the new token in the first token reference and the old one in the second. Move the apps to the new token, then clear the second. sqlgate reads the tokens again every minute, so nothing restarts. Tokens shorter than 24 characters are ignored.
@@ -117,12 +134,13 @@ See [examples/sqlgate.example.json](examples/sqlgate.example.json) for every opt
 | Key | Default | Meaning |
 |---|---|---|
 | `listen.host`, `listen.port` | `127.0.0.1`, `8102` | Where sqlgate listens. A non-loopback host is refused unless `listen.allowNonLoopback` is true |
-| `tokens` | required | Secret references for the accepted tokens |
+| `tokens` | at least one token somewhere | Secret references for the gateway tokens, which open every database and job |
+| `jobTokens` | none | Secret references for tokens that open `POST /job` only |
 | `clientIpHeader` | none | Header that carries the real client address behind a proxy (`cf-connecting-ip` for Cloudflare) |
-| `rateLimit` | 240 per 60 s | Requests per client address |
+| `rateLimit` | 240 per 60 s | Requests per client address, REST requests included |
 | `maxBodyBytes` | 8 MB | Larger requests get a 413 |
 | `healthDetails` | `false` | When true, `/healthz` also lists the served databases and jobs |
-| `postgres`, `mysql` | none | `host`, `port`, `databases` (each with `roles`) and optional `rolePasswords` |
+| `postgres`, `mysql` | none | `host`, `port`, `databases` (each with `roles` and optional `tokens` that open it only) and optional `rolePasswords` |
 | `rest` | none | `port` (and optional `host`) of a PostgREST server |
 | `jobs` | none | Named jobs, each with a loopback `url` and optional `basicAuth` |
 

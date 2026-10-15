@@ -10,7 +10,16 @@ export function loadConfig(path) {
 
 export function checkConfig(config) {
   const problems = [];
-  if (!Array.isArray(config.tokens) || !config.tokens.length) problems.push("tokens: at least one secret reference is required");
+  const list = (v) => v === undefined || (Array.isArray(v) && v.every((r) => r && typeof r === "object"));
+  if (!list(config.tokens)) problems.push("tokens: a list of secret references");
+  if (!list(config.jobTokens)) problems.push("jobTokens: a list of secret references");
+  const scopedCount = ["postgres", "mysql"].reduce(
+    (n, side) => n + Object.values(config[side]?.databases || {}).filter((d) => d?.tokens?.length).length,
+    0,
+  );
+  if (!config.tokens?.length && !config.jobTokens?.length && !scopedCount) {
+    problems.push("tokens: at least one secret reference is required (in tokens, jobTokens or a database's tokens)");
+  }
   if (!config.postgres && !config.mysql && !config.jobs && !config.rest) {
     problems.push("nothing to serve: add postgres, mysql, jobs or rest");
   }
@@ -23,6 +32,7 @@ export function checkConfig(config) {
     }
     for (const [name, db] of Object.entries(dbs)) {
       if (!Array.isArray(db.roles) || !db.roles.length) problems.push(`${side}.databases.${name}.roles: list at least one role`);
+      if (!list(db.tokens)) problems.push(`${side}.databases.${name}.tokens: a list of secret references`);
     }
   }
   if (config.rest && !config.rest.port) problems.push("rest.port is required");
