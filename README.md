@@ -123,6 +123,22 @@ app's token on its database instead, and keep the gateway tokens empty or for yo
 
 A database's token opens that database only. `jobTokens` open `POST /job` only. A token for another database gets the same 401 as a wrong token, so it cannot find out which databases are served. Each list rotates the same way as the gateway tokens below.
 
+## Reload without a gap
+
+sqlgate holds its port in a main process and serves from a worker. Send the main process `SIGHUP`
+after you change the config or upgrade the package: a new worker reads both from disk, and once it
+listens the old worker stops taking connections, finishes the requests it has and exits, so no
+request is refused on the way. A config that does not load is refused, and the running worker keeps
+serving. `SIGTERM` lets the requests in flight finish (up to `shutdownGraceSeconds`, 10 by default)
+and then exits. A process manager's own restart stops the old process before it starts the new one,
+which leaves a short gap, so prefer `SIGHUP`:
+
+```bash
+kill -HUP "$(pgrep -f 'sqlgate.*--config')"     # or launchctl kill SIGHUP gui/$UID/<label>
+```
+
+Set `SQLGATE_NO_CLUSTER=1` to run without the worker (the drain on `SIGTERM` still applies).
+
 ## Rotate the token
 
 Put the new token in the first token reference and the old one in the second. Move the apps to the new token, then clear the second. sqlgate reads the tokens again every minute, so nothing restarts. Tokens shorter than 24 characters are ignored.
@@ -140,6 +156,7 @@ See [examples/sqlgate.example.json](examples/sqlgate.example.json) for every opt
 | `rateLimit` | 240 per 60 s | Requests per client address, REST requests included |
 | `maxBodyBytes` | 8 MB | Larger requests get a 413 |
 | `healthDetails` | `false` | When true, `/healthz` also lists the served databases and jobs |
+| `shutdownGraceSeconds` | `10` | How long a stopping worker may finish its requests on `SIGHUP` or `SIGTERM` |
 | `postgres`, `mysql` | none | `host`, `port`, `databases` (each with `roles` and optional `tokens` that open it only) and optional `rolePasswords` |
 | `rest` | none | `port` (and optional `host`) of a PostgREST server |
 | `jobs` | none | Named jobs, each with a loopback `url` and optional `basicAuth` |

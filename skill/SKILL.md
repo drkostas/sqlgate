@@ -34,6 +34,7 @@ Every config key is in `examples/sqlgate.example.json`.
 | `tokens` | at least one token somewhere | gateway tokens (every database and job), first is current, second is previous |
 | `databases.<name>.tokens`, `jobTokens` | none | tokens that open one database, or `/job`, only. Prefer these: one per app |
 | `tokenRefreshSeconds` | `60` | tokens are read again this often |
+| `shutdownGraceSeconds` | `10` | a stopping worker's time to finish its requests. Reload with SIGHUP, not a restart: it refuses no request |
 | `clientIpHeader` | none | `cf-connecting-ip` behind Cloudflare |
 | `rateLimit.windowSeconds`, `rateLimit.maxRequests` | `60`, `240` | per client address |
 | `maxBodyBytes` | `8388608` | larger bodies get 413 |

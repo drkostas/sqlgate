@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import cluster from "node:cluster";
 import { loadConfig } from "./config.js";
 import { tokenSource } from "./secrets.js";
 import { createGateway } from "./server.js";
@@ -45,15 +46,81 @@ if (!tokenSource(allRefs)().length) {
   process.exit(3);
 }
 
-const { server } = createGateway(config);
 const host = config.listen?.host ?? "127.0.0.1";
 const port = config.listen?.port ?? 8102;
-server.listen(port, host, () => {
-  const served = [
-    config.postgres && `postgres ${Object.keys(config.postgres.databases).join(", ")}`,
-    config.mysql && `mysql ${Object.keys(config.mysql.databases).join(", ")}`,
-    config.jobs && `jobs ${Object.keys(config.jobs).join(", ")}`,
-    config.rest && `rest on ${config.rest.port}`,
-  ].filter(Boolean);
-  console.log(`[sqlgate] listening on ${host}:${port} (${served.join("; ")})`);
-});
+// How long a worker that stops taking connections may finish the requests it has (a reload, a stop).
+const graceMs = (config.shutdownGraceSeconds ?? 10) * 1000;
+
+// ⭐ A RELOAD WITHOUT A GAP. The main process holds the port and runs the gateway in a worker. SIGHUP
+// starts a new worker, which reads the config and the code from disk again, and once it listens the
+// old worker stops taking connections, finishes the requests it has and exits, so no request is
+// refused on the way (two processes cannot share a port on every platform, so a restart of the whole
+// process always leaves a gap). SIGTERM and SIGINT drain the worker the same way and then exit.
+// SQLGATE_NO_CLUSTER=1 runs the gateway in this process, with the same drain on SIGTERM.
+if (cluster.isPrimary && process.env.SQLGATE_NO_CLUSTER !== "1") {
+  let current = cluster.fork();
+  let stopping = false;
+  const drain = (worker) =>
+    new Promise((resolve) => {
+      if (worker.isDead()) return resolve();
+      const timer = setTimeout(() => worker.kill("SIGKILL"), graceMs);
+      worker.once("exit", () => {
+        clearTimeout(timer);
+        resolve();
+      });
+      worker.send("drain");
+    });
+  cluster.on("exit", (worker, code, signal) => {
+    if (stopping || worker !== current) return;
+    console.error(`[sqlgate] the worker exited (${signal || code}); starting another`);
+    current = cluster.fork();
+  });
+  process.on("SIGHUP", () => {
+    try {
+      loadConfig(path);
+    } catch (err) {
+      console.error(`[sqlgate] reload refused, the running worker keeps serving: ${err.message}`);
+      return;
+    }
+    const fresh = cluster.fork();
+    const failed = (code, signal) =>
+      console.error(`[sqlgate] reload failed, the new worker exited (${signal || code}); the old one keeps serving`);
+    fresh.once("exit", failed);
+    fresh.once("listening", () => {
+      fresh.off("exit", failed);
+      const old = current;
+      current = fresh;
+      drain(old).then(() => console.log("[sqlgate] reloaded"));
+    });
+  });
+  for (const sig of ["SIGTERM", "SIGINT"]) {
+    process.on(sig, () => {
+      stopping = true;
+      Promise.all(Object.values(cluster.workers).map(drain)).then(() => process.exit(0));
+    });
+  }
+} else {
+  const { server, close } = createGateway(config);
+  let draining = false;
+  const finish = () => {
+    if (draining) return;
+    draining = true;
+    // stop taking connections, let the requests in flight finish, then close the database pools
+    server.close(() => close().finally(() => process.exit(0)));
+    server.closeIdleConnections?.();
+    setTimeout(() => process.exit(0), graceMs).unref();
+  };
+  process.on("message", (m) => m === "drain" && finish());
+  process.on("disconnect", finish);   // the main process is gone: nobody will send drain
+  if (!cluster.isWorker) for (const sig of ["SIGTERM", "SIGINT"]) process.on(sig, finish);
+  else for (const sig of ["SIGTERM", "SIGINT"]) process.on(sig, () => {});   // the main process decides
+  server.listen(port, host, () => {
+    const served = [
+      config.postgres && `postgres ${Object.keys(config.postgres.databases).join(", ")}`,
+      config.mysql && `mysql ${Object.keys(config.mysql.databases).join(", ")}`,
+      config.jobs && `jobs ${Object.keys(config.jobs).join(", ")}`,
+      config.rest && `rest on ${config.rest.port}`,
+    ].filter(Boolean);
+    console.log(`[sqlgate] listening on ${host}:${port} (${served.join("; ")})${cluster.isWorker ? ` in worker ${process.pid}` : ""}`);
+  });
+}
