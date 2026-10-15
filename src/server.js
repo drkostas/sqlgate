@@ -17,6 +17,20 @@ export function createGateway(config, deps = {}) {
     deps.currentTokens ||
     tokenSource(config.tokens || [], { ttlMs: (config.tokenRefreshSeconds ?? 60) * 1000 });
   const tokenMatches = makeTokenMatcher(currentTokens);
+  const ttlMs = (config.tokenRefreshSeconds ?? 60) * 1000;
+  // Tokens that open one database (its `tokens`), or only /job (`jobTokens`), beside the gateway
+  // tokens that open everything.
+  const scopedFor = (databases) =>
+    Object.fromEntries(
+      Object.entries(databases || {})
+        .filter(([, d]) => Array.isArray(d?.tokens) && d.tokens.length)
+        .map(([name, d]) => [name, makeTokenMatcher(tokenSource(d.tokens, { ttlMs }))]),
+    );
+  const postgresScoped = scopedFor(config.postgres?.databases);
+  const mysqlScoped = scopedFor(config.mysql?.databases);
+  const jobTokenMatches = config.jobTokens?.length
+    ? makeTokenMatcher(tokenSource(config.jobTokens, { ttlMs }))
+    : () => false;
   const overLimit = makeRateLimiter({
     windowMs: (config.rateLimit?.windowSeconds ?? 60) * 1000,
     max: config.rateLimit?.maxRequests ?? 240,
@@ -43,6 +57,8 @@ export function createGateway(config, deps = {}) {
       return send(res, 200, body);
     }
     if (config.rest && url.pathname.startsWith("/rest/v1/")) {
+      // The REST layer counts against the same limit as every other route.
+      if (overLimit(String(ip))) return send(res, 429, { message: "too many requests" });
       return proxyToRest(req, res, url, config.rest, log);
     }
     const routes = { "/sql": postgres, "/mysql": mysql, "/job": jobs };
@@ -72,7 +88,8 @@ export function createGateway(config, deps = {}) {
     }
 
     if (url.pathname === "/job") {
-      if (!tokenMatches(String(req.headers["x-gateway-token"] || ""))) {
+      const jobToken = String(req.headers["x-gateway-token"] || "");
+      if (!tokenMatches(jobToken) && !jobTokenMatches(jobToken)) {
         log.warn(`[sqlgate] job refused from ${ip}: unauthorised`);
         return send(res, 401, { message: "unauthorised" });
       }
@@ -83,7 +100,7 @@ export function createGateway(config, deps = {}) {
     }
 
     if (url.pathname === "/mysql") {
-      const auth = authoriseConnection(req.headers["sql-connection-string"], config.mysql.databases || {}, tokenMatches);
+      const auth = authoriseConnection(req.headers["sql-connection-string"], config.mysql.databases || {}, tokenMatches, mysqlScoped);
       if (auth.error) {
         log.warn(`[sqlgate] mysql refused from ${ip}: ${auth.error}`);
         return send(res, 401, { message: auth.error });
@@ -99,7 +116,7 @@ export function createGateway(config, deps = {}) {
       }
     }
 
-    const auth = authoriseConnection(req.headers["neon-connection-string"], config.postgres.databases || {}, tokenMatches);
+    const auth = authoriseConnection(req.headers["neon-connection-string"], config.postgres.databases || {}, tokenMatches, postgresScoped);
     if (auth.error) {
       log.warn(`[sqlgate] refused from ${ip}: ${auth.error}`);
       return send(res, 401, { message: auth.error });

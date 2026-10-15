@@ -24,8 +24,12 @@ export function makeTokenMatcher(currentTokens) {
  * The client keeps the connection string it would use for any hosted database. The password is the
  * gateway token, the path names the database and the user name picks the role. `databases` maps a
  * database name to the roles a caller may ask for. Anything not listed is refused.
+ *
+ * `scoped` maps a database name to a matcher for the tokens that open that database only (its
+ * `tokens` in the config). A gateway token opens every database. A scoped token for another
+ * database gets the same answer as a wrong token, so it cannot learn which databases are served.
  */
-export function authoriseConnection(raw, databases, tokenMatches) {
+export function authoriseConnection(raw, databases, tokenMatches, scoped = {}) {
   if (!raw) return { error: "no connection string" };
   let url;
   try {
@@ -33,8 +37,10 @@ export function authoriseConnection(raw, databases, tokenMatches) {
   } catch {
     return { error: "unparseable connection string" };
   }
-  if (!tokenMatches(decodeURIComponent(url.password || ""))) return { error: "unauthorised" };
+  const given = decodeURIComponent(url.password || "");
   const db = decodeURIComponent(url.pathname.replace(/^\//, ""));
+  const forDb = Object.prototype.hasOwnProperty.call(scoped, db) ? scoped[db] : null;
+  if (!tokenMatches(given) && !(forDb && forDb(given))) return { error: "unauthorised" };
   if (!Object.prototype.hasOwnProperty.call(databases, db)) return { error: `database not served here: ${db}` };
   const role = decodeURIComponent(url.username || "");
   if (!databases[db].roles.includes(role)) return { error: `role not served for ${db}` };

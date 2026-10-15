@@ -31,7 +31,8 @@ Every config key is in `examples/sqlgate.example.json`.
 | Key | Default | Notes |
 |---|---|---|
 | `listen.host`, `listen.port` | `127.0.0.1`, `8102` | non-loopback refused unless `listen.allowNonLoopback` |
-| `tokens` | required | secret references, first is current, second is previous |
+| `tokens` | at least one token somewhere | gateway tokens (every database and job), first is current, second is previous |
+| `databases.<name>.tokens`, `jobTokens` | none | tokens that open one database, or `/job`, only. Prefer these: one per app |
 | `tokenRefreshSeconds` | `60` | tokens are read again this often |
 | `clientIpHeader` | none | `cf-connecting-ip` behind Cloudflare |
 | `rateLimit.windowSeconds`, `rateLimit.maxRequests` | `60`, `240` | per client address |
@@ -43,7 +44,7 @@ Every config key is in `examples/sqlgate.example.json`.
 
 A secret is always a reference object, never a plain string. The forms are `{"env": "NAME"}`, `{"file": "/path"}`, `{"command": ["prog", "arg"]}` (a keychain or vault CLI) and `{"value": "..."}` for tests. Add `"optional": true` to get an empty value instead of an error.
 
-The process refuses to start with exit code 2 when the config is invalid (all problems are listed together) and exit code 3 when no token of at least 24 characters can be read. A shorter token is ignored with a log line.
+The process refuses to start with exit code 2 when the config is invalid (all problems are listed together) and exit code 3 when no token of at least 24 characters can be read from any of the token lists. A shorter token is ignored with a log line.
 
 ## Roles
 
