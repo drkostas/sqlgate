@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.3.1
+
+- Each request's log line ends with the kind of token that let it in (`gateway`, `database` or `job`), so a rotation can confirm an old token is no longer used before removing it
+
 ## 0.3.0
 
 - A database can carry its own `tokens`, which open that database only, and `jobTokens` open `POST /job` only. A token for another database gets the same 401 as a wrong one. The gateway `tokens` still open everything, and a config may now hold only scoped tokens
