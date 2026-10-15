@@ -1,13 +1,16 @@
 name: Publish to npm
 
-# A tag v<version> publishes @drkostas/sqlgate. npm trusts this workflow (trusted publishing), so
-# the job holds no token: npm checks the GitHub OIDC identity and records provenance.
+# A tag v<version> releases @drkostas/sqlgate. The release is the package's npm pack tarball, attached
+# to a GitHub release of the tag, so a deployment can install it by URL and its lock file keeps the
+# checksum. When the repository variable NPM_PUBLISH is "true", the same tarball is also published to
+# npm. npm trusts this workflow (trusted publishing), so the job holds no token: npm checks the GitHub
+# OIDC identity and records provenance. Without that trust on npm's side, leave NPM_PUBLISH unset.
 on:
   push:
     tags: ["v*"]
 
 permissions:
-  contents: read
+  contents: write
   id-token: write
 
 jobs:
@@ -22,4 +25,32 @@ jobs:
       - run: npm install -g npm@^11.5.1
       - name: The tag matches the package version
         run: test "v$(node -p "require('./package.json').version")" = "${GITHUB_REF_NAME}"
-      - run: npm publish --provenance --access public
+      - name: Pack the package
+        run: |
+          F=$(npm pack --json | node -p 'JSON.parse(require("fs").readFileSync(0, "utf8"))[0].filename')
+          test -f "$F"
+          echo "TARBALL=$F" >> "$GITHUB_ENV"
+      - name: Attach the tarball to a GitHub release of the tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          URL="https://github.com/${REPO}/releases/download/${GITHUB_REF_NAME}/${TARBALL}"
+          {
+            echo "@drkostas/sqlgate ${GITHUB_REF_NAME#v}, packed with npm pack. Install it by URL:"
+            echo
+            echo "~~~bash"
+            echo "npm install --save-exact ${URL}"
+            echo "~~~"
+            echo
+            echo "The changes are in CHANGELOG.md."
+          } > notes.md
+          if gh release view "${GITHUB_REF_NAME}" --repo "${REPO}" >/dev/null 2>&1; then
+            gh release upload "${GITHUB_REF_NAME}" "${TARBALL}" --repo "${REPO}" --clobber
+          else
+            gh release create "${GITHUB_REF_NAME}" "${TARBALL}" --repo "${REPO}" --verify-tag \
+              --title "${GITHUB_REF_NAME#v}" --notes-file notes.md
+          fi
+      - name: Publish the same tarball to npm
+        if: vars.NPM_PUBLISH == 'true'
+        run: npm publish "${TARBALL}" --provenance --access public

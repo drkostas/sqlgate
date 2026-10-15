@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- A `v<version>` tag attaches the `npm pack` tarball to a GitHub release of the tag, installable by URL. The same tarball goes to npm only when the repository variable `NPM_PUBLISH` is `true`
+
 ## 0.3.1
 
 - Each request's log line ends with the kind of token that let it in (`gateway`, `database` or `job`), so a rotation can confirm an old token is no longer used before removing it
