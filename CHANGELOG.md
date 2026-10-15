@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.3.0
+
 - A database can carry its own `tokens`, which open that database only, and `jobTokens` open `POST /job` only. A token for another database gets the same 401 as a wrong one. The gateway `tokens` still open everything, and a config may now hold only scoped tokens
 - Requests to `/rest/v1/*` count against the rate limit like every other route (they went to PostgREST without it)
 - The npm package is published from GitHub Actions with npm's trusted publishing when a `v<version>` tag is pushed, so no npm token is kept anywhere, and each release carries provenance
