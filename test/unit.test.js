@@ -17,7 +17,7 @@ test("both the current and the previous token are accepted", () => {
 });
 
 test("a connection string picks the database and the role", () => {
-  assert.deepEqual(authoriseConnection(`postgresql://app_ro:${TOKEN}@h/app`, dbs, matches), { db: "app", role: "app_ro" });
+  assert.deepEqual(authoriseConnection(`postgresql://app_ro:${TOKEN}@h/app`, dbs, matches), { db: "app", role: "app_ro", token: "gateway" });
   assert.match(authoriseConnection(`postgresql://app_ro:bad@h/app`, dbs, matches).error, /unauthorised/);
   assert.match(authoriseConnection(`postgresql://app_ro:${TOKEN}@h/other`, dbs, matches).error, /not served/);
   assert.match(authoriseConnection(`postgresql://root:${TOKEN}@h/app`, dbs, matches).error, /role not served/);

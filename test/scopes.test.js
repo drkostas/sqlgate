@@ -13,9 +13,9 @@ test("a scoped token opens its own database and no other", () => {
   const dbs = { shop: { roles: ["app"] }, blog: { roles: ["app"] } };
   const gateway = makeTokenMatcher(() => [GATEWAY]);
   const scoped = { shop: makeTokenMatcher(() => [SHOP]) };
-  assert.deepEqual(authoriseConnection(`postgresql://app:${SHOP}@h/shop`, dbs, gateway, scoped), { db: "shop", role: "app" });
+  assert.deepEqual(authoriseConnection(`postgresql://app:${SHOP}@h/shop`, dbs, gateway, scoped), { db: "shop", role: "app", token: "database" });
   assert.match(authoriseConnection(`postgresql://app:${SHOP}@h/blog`, dbs, gateway, scoped).error, /^unauthorised$/);
-  assert.deepEqual(authoriseConnection(`postgresql://app:${GATEWAY}@h/blog`, dbs, gateway, scoped), { db: "blog", role: "app" });
+  assert.deepEqual(authoriseConnection(`postgresql://app:${GATEWAY}@h/blog`, dbs, gateway, scoped), { db: "blog", role: "app", token: "gateway" });
 });
 
 test("a scoped token learns nothing about databases it does not open", () => {
@@ -57,6 +57,7 @@ function call(port, path, { method = "POST", headers = {}, body = "{}" } = {}) {
 
 test("through the gateway: database tokens, the job token and the gateway token", async () => {
   const ran = [];
+  const logged = [];
   const { server, close } = createGateway(
     {
       tokens: [],
@@ -68,7 +69,7 @@ test("through the gateway: database tokens, the job token and the gateway token"
       currentTokens: () => [GATEWAY],
       postgres: { run: async (db) => (ran.push(db), { rowCount: 0, rows: [], fields: [] }), close: async () => {} },
       jobs: { names: ["rebuild"], start: async (name) => ({ started: name }) },
-      log: { log() {}, warn() {}, error() {} },
+      log: { log: (line) => logged.push(line), warn() {}, error() {} },
     },
   );
   const port = await listen(server);
@@ -80,10 +81,14 @@ test("through the gateway: database tokens, the job token and the gateway token"
     assert.equal((await sql(GATEWAY, "blog")).status, 200);
     assert.equal((await sql(JOB, "shop")).status, 401);
     assert.deepEqual(ran, ["shop", "blog"]);
+    // each line says which kind of token let the request in, so a rotation can see an old token is unused
+    assert.match(logged.find((l) => l.includes("shop/app")), /\(database token\)$/);
+    assert.match(logged.find((l) => l.includes("blog/app")), /\(gateway token\)$/);
     const job = (token) => call(port, "/job", { headers: { "x-gateway-token": token }, body: '{"job":"rebuild"}' });
     assert.equal((await job(JOB)).status, 202);
     assert.equal((await job(SHOP)).status, 401);
     assert.equal((await job(GATEWAY)).status, 202);
+    assert.deepEqual(logged.filter((l) => l.startsWith("[sqlgate] job")).map((l) => l.split(" (")[1]), ["job token)", "gateway token)"]);
   } finally {
     await close();
   }

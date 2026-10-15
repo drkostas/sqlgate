@@ -94,6 +94,7 @@ export function createGateway(config, deps = {}) {
         return send(res, 401, { message: "unauthorised" });
       }
       const outcome = await jobs.start(String(parsed.job || ""));
+      log.log(`[sqlgate] job ${preview(parsed.job)} from ${ip} (${tokenMatches(jobToken) ? "gateway" : "job"} token)`);
       if (outcome.error) return send(res, 409, { message: outcome.error });
       if (outcome.failed) return send(res, 502, { message: outcome.failed });
       return send(res, 202, outcome);
@@ -108,7 +109,7 @@ export function createGateway(config, deps = {}) {
       const t0 = Date.now();
       try {
         const out = await mysql.run(auth.db, auth.role, parsed);
-        log.log(`[sqlgate] ${auth.db}/${auth.role} ${preview(parsed.sql)} -> ${out.rowCount} rows in ${Date.now() - t0}ms from ${ip}`);
+        log.log(`[sqlgate] ${auth.db}/${auth.role} ${preview(parsed.sql)} -> ${out.rowCount} rows in ${Date.now() - t0}ms from ${ip} (${auth.token} token)`);
         return send(res, 200, out);
       } catch (err) {
         log.error(`[sqlgate] ${auth.db}/${auth.role} error: ${err.message}`);
@@ -130,7 +131,7 @@ export function createGateway(config, deps = {}) {
         deferrable: req.headers["neon-batch-deferrable"],
       });
       const what = out.results ? `batch of ${out.results.length}` : `${preview(parsed.query)} -> ${out.rowCount} rows`;
-      log.log(`[sqlgate] ${auth.db}/${auth.role} ${what} in ${Date.now() - t0}ms from ${ip}`);
+      log.log(`[sqlgate] ${auth.db}/${auth.role} ${what} in ${Date.now() - t0}ms from ${ip} (${auth.token} token)`);
       return send(res, 200, out);
     } catch (err) {
       log.error(`[sqlgate] ${auth.db}/${auth.role} error: ${err.message}`);

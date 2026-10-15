@@ -28,6 +28,7 @@ export function makeTokenMatcher(currentTokens) {
  * `scoped` maps a database name to a matcher for the tokens that open that database only (its
  * `tokens` in the config). A gateway token opens every database. A scoped token for another
  * database gets the same answer as a wrong token, so it cannot learn which databases are served.
+ * The answer names the kind of token that matched (`gateway` or `database`), which the log prints.
  */
 export function authoriseConnection(raw, databases, tokenMatches, scoped = {}) {
   if (!raw) return { error: "no connection string" };
@@ -40,11 +41,13 @@ export function authoriseConnection(raw, databases, tokenMatches, scoped = {}) {
   const given = decodeURIComponent(url.password || "");
   const db = decodeURIComponent(url.pathname.replace(/^\//, ""));
   const forDb = Object.prototype.hasOwnProperty.call(scoped, db) ? scoped[db] : null;
-  if (!tokenMatches(given) && !(forDb && forDb(given))) return { error: "unauthorised" };
+  const viaGateway = tokenMatches(given);
+  if (!viaGateway && !(forDb && forDb(given))) return { error: "unauthorised" };
   if (!Object.prototype.hasOwnProperty.call(databases, db)) return { error: `database not served here: ${db}` };
   const role = decodeURIComponent(url.username || "");
   if (!databases[db].roles.includes(role)) return { error: `role not served for ${db}` };
-  return { db, role };
+  // which kind of token let it in, for the log: a rotation reads it to see that an old token is unused
+  return { db, role, token: viaGateway ? "gateway" : "database" };
 }
 
 /** A sliding-window rate limit per client address. */
