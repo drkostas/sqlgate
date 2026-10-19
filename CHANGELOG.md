@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.4.1
+
+- An empty gateway `tokens` list (a config that keeps only database and job tokens) no longer prints "no usable token" on every request
+
 ## 0.4.0
 
 - The gateway serves from a worker under a main process that holds the port. `SIGHUP` starts a new worker with the config and code read again, and the old one finishes its requests before it exits, so a reload refuses no request. A config that does not load is refused and the running worker keeps serving

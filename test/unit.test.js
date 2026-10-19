@@ -65,6 +65,20 @@ test("tokens are cached for the ttl and short tokens are ignored", () => {
   assert.equal(reads, 4);
 });
 
+test("an empty token list opens nothing and says nothing", () => {
+  const errors = [];
+  const saved = console.error;
+  console.error = (m) => errors.push(m);
+  try {
+    const src = tokenSource([], { resolve: () => assert.fail("nothing to resolve") });
+    assert.deepEqual(src(), []);
+    assert.deepEqual(src(), []);
+  } finally {
+    console.error = saved;
+  }
+  assert.deepEqual(errors, []);
+});
+
 test("config problems are listed together", () => {
   assert.deepEqual(checkConfig({ tokens: [{ env: "T" }], postgres: { databases: { a: { roles: ["r"] } } } }), []);
   const problems = checkConfig({ postgres: { databases: { a: {} } }, listen: { host: "0.0.0.0" } });
