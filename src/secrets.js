@@ -44,6 +44,9 @@ export function resolveSecret(ref, { run = execFileSync, env = process.env, read
  * then clear the second. Reading is cached because a command reference spawns a process.
  */
 export function tokenSource(refs, { ttlMs = 60_000, minLength = 24, resolve = resolveSecret, now = Date.now } = {}) {
+  // No references is a choice (a config with only scoped tokens), not a broken secret: nothing to
+  // read and nothing to warn about.
+  if (!refs.length) return () => [];
   let cache = { at: -Infinity, values: [] };
   return function currentTokens() {
     const t = now();
