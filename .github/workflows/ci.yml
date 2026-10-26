@@ -37,7 +37,9 @@ jobs:
       - run: npm test
 
   python-client:
-    runs-on: ubuntu-latest
+    # 24.04, not ubuntu-latest: setup-python has no Python 3.9 build for Ubuntu 26.04, and the
+    # client still supports 3.9 (requires-python).
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         python: ["3.9", "3.12", "3.13"]

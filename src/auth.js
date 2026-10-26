@@ -50,15 +50,30 @@ export function authoriseConnection(raw, databases, tokenMatches, scoped = {}) {
   return { db, role, token: viaGateway ? "gateway" : "database" };
 }
 
-/** A sliding-window rate limit per client address. */
+/**
+ * A sliding-window rate limit per client address. Returns 0 when the request is admitted, and
+ * otherwise how many requests in a row this address has had refused (1 for the first), so the caller
+ * can log a burst once. Only admitted requests count against the window: a client that keeps
+ * retrying while it is over the limit is admitted again as soon as its older requests leave it.
+ */
 export function makeRateLimiter({ windowMs = 60_000, max = 240, now = Date.now } = {}) {
   const hits = new Map();
+  const refused = new Map();
   return function overLimit(ip) {
     const t = now();
     const seen = (hits.get(ip) || []).filter((x) => t - x < windowMs);
-    seen.push(t);
     hits.set(ip, seen);
-    if (hits.size > 5000) hits.clear();
-    return seen.length > max;
+    if (seen.length >= max) {
+      const n = (refused.get(ip) || 0) + 1;
+      refused.set(ip, n);
+      return n;
+    }
+    seen.push(t);
+    refused.delete(ip);
+    if (hits.size > 5000) {
+      hits.clear();
+      refused.clear();
+    }
+    return 0;
   };
 }

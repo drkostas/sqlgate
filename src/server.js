@@ -31,10 +31,18 @@ export function createGateway(config, deps = {}) {
   const jobTokenMatches = config.jobTokens?.length
     ? makeTokenMatcher(tokenSource(config.jobTokens, { ttlMs }))
     : () => false;
-  const overLimit = makeRateLimiter({
-    windowMs: (config.rateLimit?.windowSeconds ?? 60) * 1000,
-    max: config.rateLimit?.maxRequests ?? 240,
-  });
+  const rateWindowSeconds = config.rateLimit?.windowSeconds ?? 60;
+  const rateMax = config.rateLimit?.maxRequests ?? 240;
+  const overLimit = makeRateLimiter({ windowMs: rateWindowSeconds * 1000, max: rateMax });
+  // A refusal is otherwise invisible on the gateway's side, and the client only sees its own error,
+  // so the first refusal of each burst is logged with the limit that caused it.
+  const limited = (ip) => {
+    const refusedInARow = overLimit(String(ip));
+    if (refusedInARow === 1) {
+      log.warn(`[sqlgate] rate limit reached for ${ip}: ${rateMax} requests in ${rateWindowSeconds} s, refusing until older ones leave the window`);
+    }
+    return refusedInARow > 0;
+  };
   const maxBody = config.maxBodyBytes ?? DEFAULT_MAX_BODY;
   const ipHeader = (config.clientIpHeader || "").toLowerCase();
 
@@ -58,7 +66,7 @@ export function createGateway(config, deps = {}) {
     }
     if (config.rest && url.pathname.startsWith("/rest/v1/")) {
       // The REST layer counts against the same limit as every other route.
-      if (overLimit(String(ip))) return send(res, 429, { message: "too many requests" });
+      if (limited(ip)) return send(res, 429, { message: "too many requests" });
       return proxyToRest(req, res, url, config.rest, log);
     }
     const routes = { "/sql": postgres, "/mysql": mysql, "/job": jobs };
@@ -78,7 +86,7 @@ export function createGateway(config, deps = {}) {
       return send(res, 400, { message: `request stream failed: ${err?.message || "unknown"}` });
     }
 
-    if (overLimit(String(ip))) return send(res, 429, { message: "too many requests" });
+    if (limited(ip)) return send(res, 429, { message: "too many requests" });
 
     let parsed;
     try {
