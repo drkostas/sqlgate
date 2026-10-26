@@ -153,7 +153,7 @@ See [examples/sqlgate.example.json](examples/sqlgate.example.json) for every opt
 | `tokens` | at least one token somewhere | Secret references for the gateway tokens, which open every database and job |
 | `jobTokens` | none | Secret references for tokens that open `POST /job` only |
 | `clientIpHeader` | none | Header that carries the real client address behind a proxy (`cf-connecting-ip` for Cloudflare) |
-| `rateLimit` | 240 per 60 s | Requests per client address, REST requests included |
+| `rateLimit` | 240 per 60 s | Requests per client address, REST requests included. Only admitted requests count, and the first refusal of each burst is logged. A serverless app reaches the gateway from a few shared addresses, so size it for a burst of page loads rather than for one user |
 | `maxBodyBytes` | 8 MB | Larger requests get a 413 |
 | `healthDetails` | `false` | When true, `/healthz` also lists the served databases and jobs |
 | `shutdownGraceSeconds` | `10` | How long a stopping worker may finish its requests on `SIGHUP` or `SIGTERM` |

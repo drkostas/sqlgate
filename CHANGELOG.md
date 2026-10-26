@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.4.2
+
+- A request refused by the rate limit no longer counts against the window, so a client that keeps retrying while it is over the limit is admitted again as soon as its older requests leave the window (before, each refused retry kept it locked out)
+- The first refusal of each burst is logged with the address and the limit (`rate limit reached for <address>`), so a client that only sees its own error can be matched to the gateway's side
+
 ## 0.4.1
 
 - An empty gateway `tokens` list (a config that keeps only database and job tokens) no longer prints "no usable token" on every request

@@ -115,3 +115,29 @@ test("REST requests count against the rate limit", async () => {
     await new Promise((r) => rest.close(r));
   }
 });
+
+test("the first refusal of a burst is logged with the limit, and only the first", async () => {
+  const rest = http.createServer((req, res) => {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end("[]");
+  });
+  const restPort = await listen(rest);
+  const warned = [];
+  const { server, close } = createGateway(
+    { tokens: [{ value: GATEWAY }], rest: { port: restPort }, rateLimit: { windowSeconds: 60, maxRequests: 1 } },
+    { currentTokens: () => [GATEWAY], log: { log() {}, warn: (line) => warned.push(line), error() {} } },
+  );
+  const port = await listen(server);
+  try {
+    const get = () => call(port, "/rest/v1/items", { method: "GET" });
+    assert.equal((await get()).status, 200);
+    assert.equal((await get()).status, 429);
+    assert.equal((await get()).status, 429);
+    const limits = warned.filter((l) => l.includes("rate limit reached"));
+    assert.equal(limits.length, 1);
+    assert.match(limits[0], /1 requests in 60 s/);
+  } finally {
+    await close();
+    await new Promise((r) => rest.close(r));
+  }
+});

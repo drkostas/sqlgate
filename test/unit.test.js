@@ -40,6 +40,31 @@ test("the rate limit counts per address within the window", () => {
   assert.ok(!over("a"));
 });
 
+test("a refused request does not count against the window", () => {
+  let t = 0;
+  const over = makeRateLimiter({ windowMs: 1000, max: 2, now: () => t });
+  over("a");
+  over("a");
+  // A client that keeps retrying while it is over the limit must not keep itself locked out.
+  t = 500;
+  assert.ok(over("a"));
+  t = 999;
+  assert.ok(over("a"));
+  t = 1000;
+  assert.ok(!over("a"));
+});
+
+test("the rate limit says how many requests in a row it refused", () => {
+  let t = 0;
+  const over = makeRateLimiter({ windowMs: 1000, max: 1, now: () => t });
+  assert.equal(over("a"), 0);
+  assert.equal(over("a"), 1);
+  assert.equal(over("a"), 2);
+  t = 1000;
+  assert.equal(over("a"), 0);
+  assert.equal(over("a"), 1);
+});
+
 test("secret references", () => {
   assert.equal(resolveSecret({ env: "X" }, { env: { X: " v " } }), "v");
   assert.equal(resolveSecret({ value: "lit" }), "lit");
