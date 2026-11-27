@@ -86,3 +86,42 @@ test("an unknown job is refused before anything is sent", async () => {
 test("a job url off the loopback is rejected at start-up", () => {
   assert.throws(() => makeJobs({ x: { url: "http://example.com/run" } }), /loopback/);
 });
+
+// Command jobs run this Node binary with a short script, so the tests need nothing installed.
+const node = process.execPath;
+const commandJob = (script, answerMs = 300) => makeJobs({ cmd: { command: [node, "-e", script] } }, { answerMs });
+
+test("a command that exits 0 is started", async () => {
+  assert.deepEqual(await commandJob("process.exit(0)").start("cmd"), { started: "cmd" });
+});
+
+test("a command that exits non-zero is a failure that carries its stderr", async () => {
+  const r = await commandJob("console.error('unit not found'); process.exit(3)").start("cmd");
+  assert.match(r.failed, /exit 3.*unit not found/);
+});
+
+test("a command still running after the answer time is reported as started, without waiting for it", async () => {
+  const jobs = commandJob("setTimeout(() => {}, 1500)", 200);
+  const t0 = Date.now();
+  assert.deepEqual(await jobs.start("cmd"), { started: "cmd" });
+  assert.ok(Date.now() - t0 < 1000);
+  // and a second start while it runs is refused rather than run beside it
+  assert.match((await jobs.start("cmd")).error, /already running/);
+});
+
+test("a command that cannot be run is a failure, not a start", async () => {
+  const r = await makeJobs({ cmd: { command: ["/nonexistent/program"] } }).start("cmd");
+  assert.match(r.failed, /could not run/);
+});
+
+test("a command is run without a shell, so its arguments reach it as written", async () => {
+  // the script exits 0 only when it receives the text literally, with no substitution by a shell
+  const script = "process.exit(process.argv[1] === '$(exit 9)' ? 0 : 4)";
+  assert.deepEqual(await makeJobs({ cmd: { command: [node, "-e", script, "$(exit 9)"] } }).start("cmd"), { started: "cmd" });
+});
+
+test("a command whose program is not an absolute path is rejected at start-up", () => {
+  assert.throws(() => makeJobs({ x: { command: ["launchctl", "kickstart", "x"] } }), /absolute path/);
+  assert.throws(() => makeJobs({ x: { command: "/bin/true" } }), /absolute path/);
+  assert.throws(() => makeJobs({ x: { command: [] } }), /absolute path/);
+});

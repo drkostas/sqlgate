@@ -35,11 +35,13 @@ try {
 }
 
 // A gateway with no usable token would start, look healthy and refuse everything, so it does not start.
-// Every place a token can be named counts: the gateway tokens, the job tokens and each database's own.
+// Every place a token can be named counts: the gateway tokens, the job tokens, each database's own
+// and each hook's own.
 const allRefs = [
   ...(config.tokens || []),
   ...(config.jobTokens || []),
   ...["postgres", "mysql"].flatMap((side) => Object.values(config[side]?.databases || {}).flatMap((d) => d.tokens || [])),
+  ...Object.values(config.hooks || {}).flatMap((h) => h.tokens || []),
 ];
 if (!tokenSource(allRefs)().length) {
   console.error("[sqlgate] refusing to start: no token of at least 24 characters could be read");
@@ -119,6 +121,7 @@ if (cluster.isPrimary && process.env.SQLGATE_NO_CLUSTER !== "1") {
       config.postgres && `postgres ${Object.keys(config.postgres.databases).join(", ")}`,
       config.mysql && `mysql ${Object.keys(config.mysql.databases).join(", ")}`,
       config.jobs && `jobs ${Object.keys(config.jobs).join(", ")}`,
+      config.hooks && `hooks ${Object.keys(config.hooks).join(", ")}`,
       config.rest && `rest on ${config.rest.port}`,
     ].filter(Boolean);
     console.log(`[sqlgate] listening on ${host}:${port} (${served.join("; ")})${cluster.isWorker ? ` in worker ${process.pid}` : ""}`);
