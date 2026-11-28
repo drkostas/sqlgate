@@ -138,7 +138,8 @@ curl -X POST https://db.example.com/hooks/workout \
 ```
 
 - A hook's tokens open that hook only. They open no database, no other hook and not `POST /job`, and the gateway tokens do not open a hook, because the token is kept by another service.
-- A wrong token, a token for another hook and an unknown hook all get the same 401, so a caller cannot find out which hooks exist.
+- A wrong token, a token for another hook and an unknown hook all get the same 401, so the refusal does not tell a caller which hooks exist. With `healthDetails` on, `/healthz` lists the hook names, as it lists the databases and jobs.
+- A hook's `tokens` is a list, so it rotates the same way as the gateway tokens (see [Rotate the token](#rotate-the-token)). Add the new token beside the old one, give the service the new one, then remove the old one, and no delivery is refused on the way.
 - The body is read and never parsed or logged, so any format is accepted. The log line names the hook, the address and the size.
 - When the job starts, or is already running, the answer is 200 `{"received": true, "job": "sync", "running": false}` (`running` is true when it was already running), so the sender does not retry. When the job cannot start, the answer is a 502 with the reason, so the sender retries later.
 - Hooks count against the rate limit like every other route. Many services expect an answer within a few seconds, and sqlgate answers within the job's answer time (three seconds by default).
@@ -158,7 +159,7 @@ app's token on its database instead, and keep the gateway tokens empty or for yo
 "jobTokens": [{ "env": "SQLGATE_JOB_TOKEN" }]
 ```
 
-A database's token opens that database only. `jobTokens` open `POST /job` only. A token for another database gets the same 401 as a wrong token, so it cannot find out which databases are served. Each list rotates the same way as the gateway tokens below.
+A database's token opens that database only. `jobTokens` open `POST /job` only. A token for another database gets the same 401 as a wrong token, so the refusal does not tell it which databases are served (with `healthDetails` on, `/healthz` lists them). Each list rotates the same way as the gateway tokens below.
 
 ## Reload without a gap
 
