@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.5.1
+
+- A reload checks the config in the new worker, with the code it has just read, instead of in the main process, which still runs the code it started with. Before, an upgrade together with a config that used a setting the upgrade added was always refused, so the new version could only be started with a restart. A config the new worker cannot use, a missing token included, is still refused with its reason, and the running worker keeps serving
+
 ## 0.5.0
 
 - Webhooks: `POST /hooks/<name>` starts the hook's job when another service sends an event, so the work runs as soon as it happens instead of on the next scheduled run. Each hook has its own tokens, read from the `Authorization` header with or without `Bearer `, which open that hook only. The body is never parsed or logged. A delivery is answered 200 when the job starts or is already running, and 502 when it cannot start, so the sender retries

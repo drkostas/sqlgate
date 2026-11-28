@@ -2,12 +2,13 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import http from "node:http";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { freePort } from "./helpers.js";
 
-const CLI = new URL("../src/cli.js", import.meta.url).pathname;
+const ROOT = new URL("..", import.meta.url).pathname;
+const CLI = join(ROOT, "src", "cli.js");
 
 function stub(delayMs) {
   return new Promise((resolve) => {
@@ -26,15 +27,15 @@ function get(port, path) {
   });
 }
 
-async function start(restPort) {
+async function start(restPort, cli = CLI, extra = {}) {
   const dir = mkdtempSync(join(tmpdir(), "sqlgate-reload-"));
   const port = await freePort();
   const config = join(dir, "sqlgate.json");
   writeFileSync(config, JSON.stringify({
     listen: { port }, tokens: [{ value: "reload-token-0123456789abcdef" }], rest: { port: restPort },
-    rateLimit: { windowSeconds: 60, maxRequests: 100000 }, shutdownGraceSeconds: 5,
+    rateLimit: { windowSeconds: 60, maxRequests: 100000 }, shutdownGraceSeconds: 5, ...extra,
   }));
-  const proc = spawn(process.execPath, [CLI, "--config", config], { stdio: ["ignore", "pipe", "pipe"] });
+  const proc = spawn(process.execPath, [cli, "--config", config], { stdio: ["ignore", "pipe", "pipe"] });
   let out = "";
   proc.stdout.on("data", (d) => (out += d));
   proc.stderr.on("data", (d) => (out += d));
@@ -99,10 +100,48 @@ test("a reload with a broken config is refused and the gateway keeps serving", a
     gw.proc.kill("SIGHUP");
     await gw.until("reload refused");
     assert.equal(await get(gw.port, "/rest/v1/items"), 200);
+    assert.equal(gw.out().match(/reload refused/g).length, 1);
+    assert.ok(!gw.out().includes("reload failed"), gw.out());
   } finally {
     gw.proc.kill("SIGTERM");
     await new Promise((r) => gw.proc.once("exit", r));
     rest.close();
     gw.done();
+  }
+});
+
+test("a reload checks the config with the code on disk, so an upgrade and a new setting reload together", async () => {
+  // A copy of the package, so the test can upgrade it while it runs. The version that starts refuses a
+  // setting, and the version put on disk before the reload accepts it, as a release that adds a setting does.
+  const pkg = mkdtempSync(join(tmpdir(), "sqlgate-upgrade-"));
+  cpSync(join(ROOT, "src"), join(pkg, "src"), { recursive: true });
+  cpSync(join(ROOT, "package.json"), join(pkg, "package.json"));
+  symlinkSync(join(ROOT, "node_modules"), join(pkg, "node_modules"));
+  const configJs = join(pkg, "src", "config.js");
+  const upgraded = readFileSync(configJs, "utf8");
+  const before = upgraded.replace(
+    "const problems = [];",
+    'const problems = [];\n  if (config.addedLater !== undefined) problems.push("addedLater is not a setting in this version");',
+  );
+  assert.notEqual(before, upgraded);
+  writeFileSync(configJs, before);
+
+  const rest = await stub(() => 5);
+  const gw = await start(rest.address().port, join(pkg, "src", "cli.js"));
+  try {
+    writeFileSync(configJs, upgraded);
+    const cfgPath = gw.proc.spawnargs[gw.proc.spawnargs.indexOf("--config") + 1];
+    const cfg = JSON.parse(readFileSync(cfgPath, "utf8"));
+    writeFileSync(cfgPath, JSON.stringify({ ...cfg, addedLater: true }));
+    gw.proc.kill("SIGHUP");
+    await gw.until("reloaded");
+    assert.ok(!gw.out().includes("reload refused"), gw.out());
+    assert.equal(await get(gw.port, "/rest/v1/items"), 200);
+  } finally {
+    gw.proc.kill("SIGTERM");
+    await new Promise((r) => gw.proc.once("exit", r));
+    rest.close();
+    gw.done();
+    rmSync(pkg, { recursive: true, force: true });
   }
 });
