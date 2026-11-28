@@ -27,7 +27,8 @@ export function makeTokenMatcher(currentTokens) {
  *
  * `scoped` maps a database name to a matcher for the tokens that open that database only (its
  * `tokens` in the config). A gateway token opens every database. A scoped token for another
- * database gets the same answer as a wrong token, so it cannot learn which databases are served.
+ * database gets the same answer as a wrong token, so the refusal does not tell it which databases are
+ * served (`healthDetails` lists them on /healthz when it is turned on).
  * The answer names the kind of token that matched (`gateway` or `database`), which the log prints.
  */
 export function authoriseConnection(raw, databases, tokenMatches, scoped = {}) {

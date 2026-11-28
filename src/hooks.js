@@ -9,7 +9,8 @@ import { tokenSource } from "./secrets.js";
  * without the `Bearer ` prefix. A hook's tokens open that hook only: they open no database, no other
  * hook and not `POST /job`, and the gateway tokens do not open a hook, because a webhook token is
  * kept by another service. A wrong token, a token for another hook and an unknown hook all get the
- * same answer, so a caller cannot find out which hooks exist.
+ * same answer, so the refusal does not tell a caller which hooks exist (`healthDetails` lists them
+ * on /healthz when it is turned on).
  */
 export function makeHooks(hooks = {}, { ttlMs = 60_000, source = tokenSource } = {}) {
   const matchers = Object.fromEntries(

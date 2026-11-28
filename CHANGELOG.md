@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The README now says what the same-401 refusal hides and what it does not: it does not tell a caller which databases or hooks exist, and `/healthz` still lists them when `healthDetails` is on
+
 ## 0.5.0
 
 - Webhooks: `POST /hooks/<name>` starts the hook's job when another service sends an event, so the work runs as soon as it happens instead of on the next scheduled run. Each hook has its own tokens, read from the `Authorization` header with or without `Bearer `, which open that hook only. The body is never parsed or logged. A delivery is answered 200 when the job starts or is already running, and 502 when it cannot start, so the sender retries
