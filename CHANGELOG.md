@@ -3,6 +3,7 @@
 ## Unreleased
 
 - The README now says what the same-401 refusal hides and what it does not: it does not tell a caller which databases or hooks exist, and `/healthz` still lists them when `healthDetails` is on
+- The README says that a hook's tokens rotate the same way as the gateway tokens, with no refused delivery on the way
 
 ## 0.5.0
 
