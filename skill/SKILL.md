@@ -180,4 +180,5 @@ Put the new token in the first reference and the old one in the second. Move eac
 | Gateway exits after a Postgres restart | idle client error with no listener | log `idle client error` | sqlgate handles it, check app pools too |
 | Two runs of one job at the same time | lock kept only in the gateway | job server log | make the job server refuse with 409 |
 | Process exits at start with code 3 | no readable token | stderr | fix the reference or the secret store |
+| `reload refused` after an upgrade, naming a setting the new version adds | before 0.5.1 the main process checks a reload's config with the code it started with | the version the main process started with | restart the service once, so the main process runs the new code (from 0.5.1 a `SIGHUP` is enough) |
 | Batch partly written after an error | old gateway without transactions | rollback test | upgrade sqlgate, run the rollback test |

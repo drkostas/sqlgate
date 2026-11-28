@@ -26,12 +26,19 @@ if (args.includes("--help") || args.includes("-h")) {
 const i = args.indexOf("--config");
 const path = i >= 0 ? args[i + 1] : process.env.SQLGATE_CONFIG || "sqlgate.json";
 
+// A config that cannot be used stops the process. A worker sends the reason to the main process
+// instead of writing it, so the main process can say which start it refused (see SIGHUP below).
+async function refuse(reason, code) {
+  if (cluster.isWorker) await new Promise((sent) => process.send({ sqlgate: "refused", reason }, sent));
+  else console.error(`[sqlgate] ${reason}`);
+  process.exit(code);
+}
+
 let config;
 try {
   config = loadConfig(path);
 } catch (err) {
-  console.error(`[sqlgate] ${err.message}`);
-  process.exit(2);
+  await refuse(err.message, 2);
 }
 
 // A gateway with no usable token would start, look healthy and refuse everything, so it does not start.
@@ -44,8 +51,7 @@ const allRefs = [
   ...Object.values(config.hooks || {}).flatMap((h) => h.tokens || []),
 ];
 if (!tokenSource(allRefs)().length) {
-  console.error("[sqlgate] refusing to start: no token of at least 24 characters could be read");
-  process.exit(3);
+  await refuse("refusing to start: no token of at least 24 characters could be read", 3);
 }
 
 const host = config.listen?.host ?? "127.0.0.1";
@@ -60,7 +66,12 @@ const graceMs = (config.shutdownGraceSeconds ?? 10) * 1000;
 // process always leaves a gap). SIGTERM and SIGINT drain the worker the same way and then exit.
 // SQLGATE_NO_CLUSTER=1 runs the gateway in this process, with the same drain on SIGTERM.
 if (cluster.isPrimary && process.env.SQLGATE_NO_CLUSTER !== "1") {
-  let current = cluster.fork();
+  const fork = (onRefused = (reason) => console.error(`[sqlgate] ${reason}`)) => {
+    const worker = cluster.fork();
+    worker.on("message", (m) => m?.sqlgate === "refused" && onRefused(m.reason));
+    return worker;
+  };
+  let current = fork();
   let stopping = false;
   const drain = (worker) =>
     new Promise((resolve) => {
@@ -75,18 +86,24 @@ if (cluster.isPrimary && process.env.SQLGATE_NO_CLUSTER !== "1") {
   cluster.on("exit", (worker, code, signal) => {
     if (stopping || worker !== current) return;
     console.error(`[sqlgate] the worker exited (${signal || code}); starting another`);
-    current = cluster.fork();
+    current = fork();
   });
+  // The new worker checks the config, not this process. This process still runs the code it started
+  // with, so after an upgrade it would refuse a config that uses a setting the new version added. A
+  // config the new worker refuses is refused, and the running worker keeps serving.
   process.on("SIGHUP", () => {
-    try {
-      loadConfig(path);
-    } catch (err) {
-      console.error(`[sqlgate] reload refused, the running worker keeps serving: ${err.message}`);
-      return;
-    }
-    const fresh = cluster.fork();
-    const failed = (code, signal) =>
-      console.error(`[sqlgate] reload failed, the new worker exited (${signal || code}); the old one keeps serving`);
+    let refused = false;
+    const fresh = fork((reason) => {
+      refused = true;
+      console.error(`[sqlgate] reload refused, the running worker keeps serving: ${reason}`);
+    });
+    const failed = (code, signal) => {
+      const report = () =>
+        refused || console.error(`[sqlgate] reload failed, the new worker exited (${signal || code}); the old one keeps serving`);
+      // the exit can arrive before the last message, and the channel closes only after it
+      if (fresh.isConnected()) fresh.once("disconnect", report);
+      else report();
+    };
     fresh.once("exit", failed);
     fresh.once("listening", () => {
       fresh.off("exit", failed);

@@ -165,10 +165,13 @@ A database's token opens that database only. `jobTokens` open `POST /job` only. 
 sqlgate holds its port in a main process and serves from a worker. Send the main process `SIGHUP`
 after you change the config or upgrade the package: a new worker reads both from disk, and once it
 listens the old worker stops taking connections, finishes the requests it has and exits, so no
-request is refused on the way. A config that does not load is refused, and the running worker keeps
-serving. `SIGTERM` lets the requests in flight finish (up to `shutdownGraceSeconds`, 10 by default)
-and then exits. A process manager's own restart stops the old process before it starts the new one,
-which leaves a short gap, so prefer `SIGHUP`:
+request is refused on the way. The new worker checks the config with the code it has just read, so
+an upgrade and a config that uses a setting the upgrade adds can go in with one `SIGHUP`. A config
+that does not load, or that has no usable token, is refused with the reason, and the running worker
+keeps serving. A `SIGHUP` replaces the worker and never the main process, so the main process keeps
+the version it started with until the service itself restarts. `SIGTERM` lets the requests in flight
+finish (up to `shutdownGraceSeconds`, 10 by default) and then exits. A process manager's own restart
+stops the old process before it starts the new one, which leaves a short gap, so prefer `SIGHUP`:
 
 ```bash
 kill -HUP "$(pgrep -f 'sqlgate.*--config')"     # or launchctl kill SIGHUP gui/$UID/<label>
