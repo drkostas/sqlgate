@@ -4,7 +4,7 @@
 
 ## 0.5.1
 
-- A reload checks the config in the new worker, with the code it has just read, instead of in the main process, which still runs the code it started with. Before, an upgrade together with a config that used a setting the upgrade added was always refused, so the new version could only be started with a restart. A config the new worker cannot use, a missing token included, is still refused with its reason, and the running worker keeps serving
+- A reload checks the config in the new worker, with the code it has just read, instead of in the main process, which still runs the code it started with. Before, an upgrade together with a config that used a setting the upgrade added was always refused, so the new version could only be started with a restart. A config the new worker cannot use, a missing token included, is still refused with its reason, and the running worker keeps serving. Restart the service once after installing it, because a `SIGHUP` replaces the worker and not the main process, which is where this change is
 
 ## 0.5.0
 
