@@ -6,7 +6,7 @@ sqlgate lets an app on Vercel, Netlify or Cloudflare use a Postgres or MySQL dat
 
 A serverless function cannot open a database connection to a computer at home, and a database port should never be open to the internet. The Neon serverless driver sends each SQL statement as an HTTPS request instead of using the Postgres protocol. sqlgate answers those requests on your machine, behind a tunnel, so an app that already uses the Neon driver works against your own database with only a new connection string.
 
-It also serves MySQL to Python apps through a small DB-API driver (in [clients/python](clients/python)), forwards Supabase style REST calls to PostgREST, and can start named jobs on your machine for a hosted app.
+It also serves MySQL to Python apps through a small DB-API driver (in [clients/python](clients/python)), forwards Supabase style REST calls to PostgREST, can start named jobs on your machine for a hosted app, and can start a job when another service sends a webhook.
 
 ## What it does
 
@@ -14,6 +14,7 @@ It also serves MySQL to Python apps through a small DB-API driver (in [clients/p
 - Answers `POST /mysql` for the Python client, so SQLAlchemy apps keep their `mysql+pymysql` dialect
 - Forwards `/rest/v1/*` to a local PostgREST, so `supabase-js` clients work unchanged
 - Starts named jobs on the loopback with `POST /job` and reports what the job server answered
+- Starts a job when another service sends a webhook to `POST /hooks/<name>`, with a token that opens that hook only
 - Checks a token in constant time, with a second token for rotation without downtime
 - Serves only the databases and roles listed in its config (each app connects as its own role)
 - Limits requests per client address and logs every statement
@@ -106,6 +107,42 @@ curl -X POST https://db.example.com/job \
 
 The caller sends a job name, never a URL, and every job URL must be on the loopback. sqlgate waits up to three seconds for the job server's first answer. A 409 from the job server comes back as "already running", an error comes back as a failure with its reason, and silence means the job is running.
 
+A job can also be a command, when the work is a unit your service manager already runs and there is no job server to ask:
+
+```json
+"jobs": {
+  "sync": { "command": ["/bin/launchctl", "kickstart", "gui/501/org.example.sync"] }
+}
+```
+
+The command is a fixed list of arguments, run without a shell, and its program must be an absolute path. Exit 0 counts as started, and any other exit is a failure that carries the end of what the command wrote to stderr. Make the command start the work and return, as `launchctl kickstart` and `systemctl start --no-block` do: the service manager then keeps a single copy running, and asking again while it runs starts nothing new. A command still running after three seconds is reported as started and left to finish.
+
+## Webhooks
+
+Some services send a webhook when something happens, for example a fitness app when a workout is saved. sqlgate can take that request and start a job, so the work runs on your machine as soon as the event happens instead of on the next scheduled run.
+
+```json
+"hooks": {
+  "workout": {
+    "job": "sync",
+    "tokens": [{ "command": ["security", "find-generic-password", "-s", "sqlgate-hook-workout", "-w"] }]
+  }
+}
+```
+
+Give the service the address `https://db.example.com/hooks/workout` and the token. It sends the token in the `Authorization` header, with or without the `Bearer ` prefix:
+
+```bash
+curl -X POST https://db.example.com/hooks/workout \
+  -H "Authorization: Bearer $WORKOUT_HOOK_TOKEN" -d '{"workoutId":"..."}'
+```
+
+- A hook's tokens open that hook only. They open no database, no other hook and not `POST /job`, and the gateway tokens do not open a hook, because the token is kept by another service.
+- A wrong token, a token for another hook and an unknown hook all get the same 401, so a caller cannot find out which hooks exist.
+- The body is read and never parsed or logged, so any format is accepted. The log line names the hook, the address and the size.
+- When the job starts, or is already running, the answer is 200 `{"received": true, "job": "sync", "running": false}` (`running` is true when it was already running), so the sender does not retry. When the job cannot start, the answer is a 502 with the reason, so the sender retries later.
+- Hooks count against the rate limit like every other route. Many services expect an answer within a few seconds, and sqlgate answers within the job's answer time (three seconds by default).
+
 ## One token per database
 
 A gateway token opens every database and every job. To give each app only what it needs, put the
@@ -155,11 +192,12 @@ See [examples/sqlgate.example.json](examples/sqlgate.example.json) for every opt
 | `clientIpHeader` | none | Header that carries the real client address behind a proxy (`cf-connecting-ip` for Cloudflare) |
 | `rateLimit` | 240 per 60 s | Requests per client address, REST requests included. Only admitted requests count, and the first refusal of each burst is logged. A serverless app reaches the gateway from a few shared addresses, so size it for a burst of page loads rather than for one user |
 | `maxBodyBytes` | 8 MB | Larger requests get a 413 |
-| `healthDetails` | `false` | When true, `/healthz` also lists the served databases and jobs |
+| `healthDetails` | `false` | When true, `/healthz` also lists the served databases, jobs and hooks |
 | `shutdownGraceSeconds` | `10` | How long a stopping worker may finish its requests on `SIGHUP` or `SIGTERM` |
 | `postgres`, `mysql` | none | `host`, `port`, `databases` (each with `roles` and optional `tokens` that open it only) and optional `rolePasswords` |
 | `rest` | none | `port` (and optional `host`) of a PostgREST server |
-| `jobs` | none | Named jobs, each with a loopback `url` and optional `basicAuth` |
+| `jobs` | none | Named jobs, each with a loopback `url` and optional `basicAuth`, or a `command` (a list of arguments whose program is an absolute path), and an optional `answerMs` |
+| `hooks` | none | Named webhooks served at `POST /hooks/<name>`, each with the `job` it starts and the `tokens` that open it only |
 
 ## Claude Code skill
 

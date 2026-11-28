@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { validCommand } from "./jobs.js";
 
 /** Read and check a config file. Problems are reported all together, before anything starts. */
 export function loadConfig(path) {
@@ -13,12 +14,13 @@ export function checkConfig(config) {
   const list = (v) => v === undefined || (Array.isArray(v) && v.every((r) => r && typeof r === "object"));
   if (!list(config.tokens)) problems.push("tokens: a list of secret references");
   if (!list(config.jobTokens)) problems.push("jobTokens: a list of secret references");
-  const scopedCount = ["postgres", "mysql"].reduce(
-    (n, side) => n + Object.values(config[side]?.databases || {}).filter((d) => d?.tokens?.length).length,
-    0,
-  );
+  const scopedCount =
+    ["postgres", "mysql"].reduce(
+      (n, side) => n + Object.values(config[side]?.databases || {}).filter((d) => d?.tokens?.length).length,
+      0,
+    ) + Object.values(config.hooks || {}).filter((h) => h?.tokens?.length).length;
   if (!config.tokens?.length && !config.jobTokens?.length && !scopedCount) {
-    problems.push("tokens: at least one secret reference is required (in tokens, jobTokens or a database's tokens)");
+    problems.push("tokens: at least one secret reference is required (in tokens, jobTokens, a database's tokens or a hook's tokens)");
   }
   if (!config.postgres && !config.mysql && !config.jobs && !config.rest) {
     problems.push("nothing to serve: add postgres, mysql, jobs or rest");
@@ -37,7 +39,19 @@ export function checkConfig(config) {
   }
   if (config.rest && !config.rest.port) problems.push("rest.port is required");
   for (const [name, job] of Object.entries(config.jobs || {})) {
-    if (!job.url) problems.push(`jobs.${name}.url is required`);
+    if (job.url && job.command !== undefined) problems.push(`jobs.${name}: give a url or a command, not both`);
+    else if (job.command !== undefined && !validCommand(job.command)) {
+      problems.push(`jobs.${name}.command: a list of strings whose first item is an absolute path`);
+    } else if (!job.url && job.command === undefined) problems.push(`jobs.${name}: a url or a command is required`);
+  }
+  for (const [name, hook] of Object.entries(config.hooks || {})) {
+    if (!/^[A-Za-z0-9_-]+$/.test(name)) problems.push(`hooks.${name}: a hook name is letters, digits, - and _ only`);
+    if (!hook || !Object.prototype.hasOwnProperty.call(config.jobs || {}, hook.job)) {
+      problems.push(`hooks.${name}.job: name one of the jobs`);
+    }
+    if (!Array.isArray(hook?.tokens) || !hook.tokens.length || !list(hook.tokens)) {
+      problems.push(`hooks.${name}.tokens: a list of at least one secret reference, which opens this hook only`);
+    }
   }
   const host = config.listen?.host ?? "127.0.0.1";
   if (host !== "127.0.0.1" && host !== "::1" && host !== "localhost" && !config.listen?.allowNonLoopback) {

@@ -1,5 +1,6 @@
 import http from "node:http";
 import { authoriseConnection, makeRateLimiter, makeTokenMatcher } from "./auth.js";
+import { makeHooks } from "./hooks.js";
 import { makeJobs } from "./jobs.js";
 import { makeMysql, mysqlError } from "./mysql.js";
 import { makePostgres, postgresError } from "./postgres.js";
@@ -49,6 +50,7 @@ export function createGateway(config, deps = {}) {
   const postgres = config.postgres ? deps.postgres || makePostgres(config.postgres) : null;
   const mysql = config.mysql ? deps.mysql || makeMysql(config.mysql) : null;
   const jobs = config.jobs ? deps.jobs || makeJobs(config.jobs) : null;
+  const hooks = config.hooks ? deps.hooks || makeHooks(config.hooks, { ttlMs }) : null;
   const log = deps.log || console;
 
   const server = http.createServer(async (req, res) => {
@@ -61,6 +63,7 @@ export function createGateway(config, deps = {}) {
         body.databases = postgres ? Object.keys(config.postgres.databases || {}) : [];
         body.mysql = mysql ? Object.keys(config.mysql.databases || {}) : [];
         body.jobs = jobs ? jobs.names : [];
+        body.hooks = hooks ? hooks.names : [];
       }
       return send(res, 200, body);
     }
@@ -70,7 +73,8 @@ export function createGateway(config, deps = {}) {
       return proxyToRest(req, res, url, config.rest, log);
     }
     const routes = { "/sql": postgres, "/mysql": mysql, "/job": jobs };
-    if (req.method !== "POST" || !routes[url.pathname]) return send(res, 404, { message: "not found" });
+    const hookName = hooks && jobs && url.pathname.startsWith("/hooks/") ? safeDecode(url.pathname.slice("/hooks/".length)) : null;
+    if (req.method !== "POST" || !(routes[url.pathname] || hookName !== null)) return send(res, 404, { message: "not found" });
 
     let body;
     try {
@@ -87,6 +91,23 @@ export function createGateway(config, deps = {}) {
     }
 
     if (limited(ip)) return send(res, 429, { message: "too many requests" });
+
+    if (hookName !== null) {
+      // The body is the sender's business: it is read, never parsed, and never logged, so any format
+      // is accepted and nothing it carries reaches the log.
+      const job = hooks.authorise(hookName, req.headers.authorization);
+      if (!job) {
+        log.warn(`[sqlgate] hook refused from ${ip}: unauthorised`);
+        return send(res, 401, { message: "unauthorised" });
+      }
+      const outcome = await jobs.start(job);
+      const what = outcome.started ? `started ${job}` : outcome.error ? outcome.error : `failed: ${outcome.failed}`;
+      (outcome.failed ? log.error : log.log)(`[sqlgate] hook ${preview(hookName)} from ${ip} (${Buffer.byteLength(body)} bytes): ${what}`);
+      // A job that is already running still means the delivery arrived, so the sender is told so and
+      // does not retry. A job that could not start is a 502, so the sender retries later.
+      if (outcome.failed) return send(res, 502, { message: outcome.failed });
+      return send(res, 200, { received: true, job, running: !outcome.started });
+    }
 
     let parsed;
     try {
@@ -153,6 +174,14 @@ export function createGateway(config, deps = {}) {
   }
 
   return { server, close };
+}
+
+function safeDecode(part) {
+  try {
+    return decodeURIComponent(part);
+  } catch {
+    return part;
+  }
 }
 
 function preview(sql) {

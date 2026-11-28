@@ -39,6 +39,11 @@
     "rebuild_index": {
       "url": "http://127.0.0.1:8100/rebuild_index",
       "basicAuth": { "user": "admin", "password": { "env": "INDEX_JOB_PASSWORD" } }
-    }
+    },
+    "sync": { "command": ["/usr/bin/systemctl", "--user", "start", "--no-block", "example-sync.service"] }
+  },
+
+  "hooks": {
+    "workout": { "job": "sync", "tokens": [{ "env": "WORKOUT_HOOK_TOKEN" }] }
   }
 }

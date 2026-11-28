@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.5.0
+
+- Webhooks: `POST /hooks/<name>` starts the hook's job when another service sends an event, so the work runs as soon as it happens instead of on the next scheduled run. Each hook has its own tokens, read from the `Authorization` header with or without `Bearer `, which open that hook only. The body is never parsed or logged. A delivery is answered 200 when the job starts or is already running, and 502 when it cannot start, so the sender retries
+- A job can be a `command` instead of a `url`: a fixed list of arguments whose program is an absolute path, run without a shell. Exit 0 is a start and any other exit is a failure with the end of its stderr, which suits a command that asks a service manager to start a unit and returns
+
 ## 0.4.2
 
 - A request refused by the rate limit no longer counts against the window, so a client that keeps retrying while it is over the limit is admitted again as soon as its older requests leave the window (before, each refused retry kept it locked out)
